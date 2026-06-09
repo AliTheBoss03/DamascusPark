@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase";
+import { isSupabaseConfigured, createAdminClient } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
+import { getAuthedUser } from "@/lib/auth";
 import { MOCK_SESSIONS } from "@/lib/mock-data";
 import { calcSessionCost } from "@/lib/pricing";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const plate = searchParams.get("plate");
-  const userId = searchParams.get("user_id");
 
-  const db = createAdminClient();
-  if (!db) {
-    // Fallback to mock data
+  if (!isSupabaseConfigured) {
     let sessions = MOCK_SESSIONS;
     if (plate) {
       const norm = plate.replace(/\s/g, "").toLowerCase();
@@ -18,17 +17,21 @@ export async function GET(req: NextRequest) {
         (s) => s.license_plate.replace(/\s/g, "").toLowerCase() === norm
       );
     }
-    if (userId) sessions = sessions.filter((s) => s.user_id === userId);
     return NextResponse.json({ sessions });
   }
 
-  let query = db
+  const user = await getAuthedUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // RLS scopes: drivers see their own sessions; wardens/admins see all. The
+  // old ?user_id param (an IDOR vector) is gone — scope is enforced by policy.
+  const supabase = createClient();
+  let query = supabase
     .from("parking_sessions")
     .select("*, zone:parking_zones(*)")
     .order("started_at", { ascending: false });
 
   if (plate) query = query.eq("license_plate", plate);
-  if (userId) query = query.eq("user_id", userId);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -37,36 +40,49 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { user_id, zone_id, license_plate, gas_price_snapshot } = body;
+  const { zone_id, license_plate } = body;
 
-  if (!user_id || !zone_id || !license_plate) {
+  if (!zone_id || !license_plate) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const db = createAdminClient();
-  if (!db) {
+  if (!isSupabaseConfigured) {
     return NextResponse.json({
       session: {
         id: `mock-${Date.now()}`,
-        user_id,
         zone_id,
         license_plate,
         started_at: new Date().toISOString(),
         ended_at: null,
         total_cost_credits: null,
-        gas_price_snapshot: gas_price_snapshot ?? 5000,
+        gas_price_snapshot: 5000,
         status: "active",
       },
     });
   }
 
-  const { data, error } = await db
+  const user = await getAuthedUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const supabase = createClient();
+
+  // Server-authoritative gas snapshot — pricing inputs are never trusted from
+  // the client. Locks the rate for fair billing even if the index moves later.
+  const { data: gasSetting } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "gas_price_per_liter_syp")
+    .single();
+  const gasSnapshot = gasSetting ? parseInt(gasSetting.value, 10) : 5000;
+
+  // RLS sessions_insert_own enforces user_id = auth.uid().
+  const { data, error } = await supabase
     .from("parking_sessions")
     .insert({
-      user_id,
+      user_id: user.id,
       zone_id,
       license_plate,
-      gas_price_snapshot: gas_price_snapshot ?? 5000,
+      gas_price_snapshot: gasSnapshot,
       status: "active",
     })
     .select()
@@ -84,14 +100,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "session_id required" }, { status: 400 });
   }
 
-  const db = createAdminClient();
-  if (!db) {
+  if (!isSupabaseConfigured) {
     const session = MOCK_SESSIONS.find((s) => s.id === session_id);
     return NextResponse.json({ session: { ...session, status: "completed" } });
   }
 
-  // Fetch session + zone to compute cost
-  const { data: session, error: fetchErr } = await db
+  const user = await getAuthedUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // RLS ensures the caller can only read (and later update) their own session,
+  // or any session if admin.
+  const supabase = createClient();
+  const { data: session, error: fetchErr } = await supabase
     .from("parking_sessions")
     .select("*, zone:parking_zones(*)")
     .eq("id", session_id)
@@ -100,12 +120,38 @@ export async function PATCH(req: NextRequest) {
   if (fetchErr || !session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
+  if (session.status !== "active") {
+    return NextResponse.json({ error: "Session is not active" }, { status: 409 });
+  }
 
   const cost = Math.ceil(
     calcSessionCost(session.zone, session.gas_price_snapshot, session.started_at)
   );
 
-  const { data, error } = await db
+  // Charge BEFORE completing the session, via the service role (wallet RPCs are
+  // service-role only). deduct_wallet_balance rejects on insufficient funds, so
+  // an underfunded driver gets a 402 and the session stays active — no silent
+  // free parking, and the ledger stays exact.
+  const admin = createAdminClient();
+  if (admin) {
+    const { error: chargeErr } = await admin.rpc("deduct_wallet_balance", {
+      p_user_id: session.user_id,
+      p_amount: cost,
+      p_ref_id: session_id,
+      p_reason: "session_charge",
+    });
+    if (chargeErr) {
+      if (chargeErr.message?.includes("insufficient_funds")) {
+        return NextResponse.json(
+          { error: "insufficient_funds", required_credits: cost },
+          { status: 402 }
+        );
+      }
+      return NextResponse.json({ error: chargeErr.message }, { status: 500 });
+    }
+  }
+
+  const { data, error } = await supabase
     .from("parking_sessions")
     .update({
       ended_at: new Date().toISOString(),
@@ -117,14 +163,5 @@ export async function PATCH(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // Deduct from wallet
-  await db.rpc("deduct_wallet_balance", {
-    p_user_id: session.user_id,
-    p_amount: cost,
-    p_ref_id: session_id,
-    p_reason: "session_charge",
-  });
-
   return NextResponse.json({ session: data, charged_credits: cost });
 }

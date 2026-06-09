@@ -28,7 +28,7 @@ export async function signIn(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
 
-  const role = (data.user?.user_metadata?.role ?? "driver") as UserRole;
+  const role = (data.user?.app_metadata?.role ?? "driver") as UserRole;
   redirect(ROLE_HOME[role]);
 }
 

@@ -23,6 +23,14 @@ const DEMO_USERS = [
 ] as const;
 
 export async function POST() {
+  // Seeding mints privileged accounts — never leave it open in production.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_SEED !== "true") {
+    return NextResponse.json(
+      { error: "Seeding is disabled in production. Set ALLOW_SEED=true to enable temporarily." },
+      { status: 403 }
+    );
+  }
+
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -47,7 +55,10 @@ export async function POST() {
       email: user.email,
       password: user.password,
       email_confirm: true,
-      user_metadata: { role: user.role, name: user.name },
+      // role lives in app_metadata (trusted; not client-editable); name is a
+      // non-privileged display attribute and stays in user_metadata.
+      app_metadata: { role: user.role },
+      user_metadata: { name: user.name },
     });
 
     if (error && !error.message.includes("already been registered")) {

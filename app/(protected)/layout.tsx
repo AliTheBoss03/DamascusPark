@@ -22,7 +22,7 @@ export default async function ProtectedLayout({
     .eq("id", user.id)
     .single();
 
-  const role = (profile?.role ?? user.user_metadata?.role ?? "driver") as UserRole;
+  const role = (profile?.role ?? user.app_metadata?.role ?? "driver") as UserRole;
   const name = profile?.name ?? user.user_metadata?.name ?? user.email ?? "User";
   const walletBalance = profile?.wallet_balance ?? 0;
 

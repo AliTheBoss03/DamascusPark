@@ -8,12 +8,6 @@ const ROLE_HOME: Record<UserRole, string> = {
   driver: "/driver",
 };
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/seed", "/_next", "/favicon"];
-
-function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-}
-
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -38,24 +32,33 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session token — must be called on every request per Supabase SSR docs
+  // Refresh the session token — required on every request per Supabase SSR docs.
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
 
-  // ── Unauthenticated ─────────────────────────────────────────────────────────
+  // API routes authenticate themselves (JSON 401/403) and the Paymera webhook
+  // authenticates via HMAC — never bounce them to an HTML login page. The
+  // session cookie has still been refreshed above.
+  if (pathname.startsWith("/api")) {
+    return supabaseResponse;
+  }
+
+  // ── Unauthenticated page access ─────────────────────────────────────────────
   if (!user) {
-    if (isPublicPath(pathname)) return supabaseResponse;
+    if (pathname === "/login") return supabaseResponse;
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  const role = (user.user_metadata?.role ?? "driver") as UserRole;
+  // Trust app_metadata.role (service-role-set; not client-editable).
+  const role = ((user.app_metadata as { role?: UserRole } | undefined)?.role ??
+    "driver") as UserRole;
 
-  // ── Already logged in, hitting /login → home ────────────────────────────────
+  // ── Logged in, hitting the landing/login pages → role home ──────────────────
   if (pathname === "/login" || pathname === "/") {
     return NextResponse.redirect(new URL(ROLE_HOME[role], request.url));
   }
@@ -64,12 +67,7 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/admin") && role !== "admin") {
     return NextResponse.redirect(new URL(ROLE_HOME[role], request.url));
   }
-
-  if (
-    pathname.startsWith("/warden") &&
-    role !== "warden" &&
-    role !== "admin"
-  ) {
+  if (pathname.startsWith("/warden") && role !== "warden" && role !== "admin") {
     return NextResponse.redirect(new URL(ROLE_HOME[role], request.url));
   }
 
