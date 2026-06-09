@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── RTL / Bidirectional support ───────────────────────── */
+/* Cairo renders Arabic and Latin from the same font file */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
+
 :root {
   --bg-primary: #0f172a;
   --bg-card: #1e293b;

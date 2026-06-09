@@ -1,6 +1,7 @@
 "use client";
 import { Wallet, TrendingUp } from "lucide-react";
 import { formatCredits } from "@/lib/pricing";
+import { useI18n } from "@/lib/i18n/context";
 
 interface WalletCardProps {
   balance: number;
@@ -9,46 +10,31 @@ interface WalletCardProps {
   onTopUp: () => void;
 }
 
-export function WalletCard({
-  balance,
-  gasPriceSyp,
-  userName,
-  onTopUp,
-}: WalletCardProps) {
+export function WalletCard({ balance, gasPriceSyp, userName, onTopUp }: WalletCardProps) {
+  const { t } = useI18n();
   const lowBalance = balance < 20;
-  const syp = balance * 1000;
 
   return (
-    <div
-      className={`card p-5 relative overflow-hidden
-      ${lowBalance ? "border-red-500/40 bg-red-950/20" : ""}`}
-    >
-      {/* Background decoration */}
+    <div className={`card p-5 relative overflow-hidden ${lowBalance ? "border-red-500/40 bg-red-950/20" : ""}`}>
       <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-transparent pointer-events-none" />
 
       <div className="relative flex items-start justify-between">
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-            Mawqif Wallet
-          </p>
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{t("mawqifWallet")}</p>
           <p className="text-slate-400 text-sm mb-3">{userName}</p>
 
           <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-3xl font-bold tabular-nums text-slate-100">
-              {formatCredits(balance)}
-            </span>
-            <span className="text-base font-semibold text-amber-400">
-              credits
-            </span>
+            <span className="text-3xl font-bold tabular-nums text-slate-100">{formatCredits(balance)}</span>
+            <span className="text-base font-semibold text-amber-400">{t("credits")}</span>
           </div>
           <p className="text-xs text-slate-500">
-            ≈ {(syp / 1000).toLocaleString()}K SYP at current gas price
+            ≈ {(balance * 1000).toLocaleString()} ل.س
           </p>
 
           {lowBalance && (
             <p className="mt-2 text-xs text-red-400 font-medium flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
-              Low balance — top up now
+              {t("lowBalance")}
             </p>
           )}
         </div>
@@ -57,15 +43,13 @@ export function WalletCard({
           <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <Wallet className="w-5 h-5 text-amber-400" />
           </div>
-          <button onClick={onTopUp} className="btn-primary text-xs">
-            Top Up
-          </button>
+          <button onClick={onTopUp} className="btn-primary text-xs">{t("topUp")}</button>
         </div>
       </div>
 
       <div className="mt-4 pt-4 border-t border-slate-700/60 flex items-center gap-2 text-xs text-slate-500">
         <TrendingUp className="w-3.5 h-3.5" />
-        Gas Index: {gasPriceSyp.toLocaleString()} SYP/L · 1 credit = 1,000 SYP
+        {t("gasIndex")}: {gasPriceSyp.toLocaleString()} ل.س/ل · {t("creditEquivalent")}
       </div>
     </div>
   );
