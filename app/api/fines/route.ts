@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   let query = db
     .from("fines")
-    .select("*, zone:parking_zones(*), warden:users!warden_id(*)")
+    .select("*, zone:parking_zones(*), warden:profiles!warden_id(*)")
     .order("issued_at", { ascending: false });
 
   if (wardenId) query = query.eq("warden_id", wardenId);
