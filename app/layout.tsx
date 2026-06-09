@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
+import { Cairo } from "next/font/google";
+import { cookies } from "next/headers";
 import "./globals.css";
+import { LanguageProvider } from "@/lib/i18n/context";
+import type { Locale } from "@/lib/i18n/translations";
+
+const cairo = Cairo({
+  subsets: ["arabic", "latin"],
+  variable: "--font-cairo",
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800", "900"],
+});
 
 export const metadata: Metadata = {
-  title: "Mawqif | موقف – Damascus Smart Parking",
+  title: "موقف | Mawqif – منصة المواقف الذكية في دمشق",
   description:
-    "Digital parking management platform for Damascus, Syria — inflation-pegged zones, warden enforcement, and real-time revenue for the municipality.",
-  keywords: ["Damascus", "parking", "Syria", "smart city", "municipal"],
+    "منصة إدارة المواقف الرقمية في دمشق — أسعار مرتبطة بمؤشر الوقود، إنفاذ فوري من الحراس، وإيرادات آنية للبلدية.",
+  keywords: ["Damascus", "parking", "Syria", "دمشق", "مواقف", "smart city"],
 };
 
 export default function RootLayout({
@@ -13,10 +24,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = cookies();
+  const locale = (cookieStore.get("MAWQIF_LOCALE")?.value ?? "ar") as Locale;
+  const dir = locale === "ar" ? "rtl" : "ltr";
+
   return (
-    <html lang="en" dir="ltr" className="dark">
-      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
-        {children}
+    <html lang={locale} dir={dir} className="dark">
+      <body
+        className={`${cairo.variable} min-h-screen bg-slate-950 text-slate-100 antialiased font-sans`}
+      >
+        <LanguageProvider defaultLocale={locale}>{children}</LanguageProvider>
       </body>
     </html>
   );
