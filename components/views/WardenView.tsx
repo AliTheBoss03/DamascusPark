@@ -8,26 +8,16 @@ import {
 import { ZoneBadge } from "@/components/ui/ZoneBadge";
 import { SessionTimer } from "@/components/ui/SessionTimer";
 import { formatCredits, calcHourlyRate } from "@/lib/pricing";
-import { MOCK_SESSIONS, MOCK_FINES, MOCK_USERS, MOCK_ZONES } from "@/lib/mock-data";
 import { useI18n } from "@/lib/i18n/context";
-import type { Fine, PlateCheckResult } from "@/types";
+import type { Fine, ParkingZone, ParkingSession, PlateCheckResult } from "@/types";
 import type { VehicleRecord } from "@/lib/services/syrian-transport-api";
 
-const WARDEN = MOCK_USERS[2];
-const GAS_PRICE = 5000;
-
-function checkPlate(plate: string): PlateCheckResult {
-  const normalized = plate.trim().toUpperCase();
-  const session = MOCK_SESSIONS.find(
-    (s) => s.status === "active" &&
-      s.license_plate.toUpperCase().replace(/\s/g, "") === normalized.replace(/\s/g, "")
-  );
-  if (session) {
-    const zone = MOCK_ZONES.find((z) => z.id === session.zone_id);
-    const driver = MOCK_USERS.find((u) => u.id === session.user_id);
-    return { plate: plate.trim(), hasActiveSession: true, session, zone, driverName: driver?.name };
-  }
-  return { plate: plate.trim(), hasActiveSession: false };
+interface WardenViewProps {
+  wardenId: string;
+  wardenName: string;
+  zones: ParkingZone[];
+  gasPriceSyp: number;
+  initialFines: Fine[];
 }
 
 type MoTStatus = "idle" | "loading" | "found" | "not_found" | "error";
@@ -46,16 +36,20 @@ const STATUS_COLORS: Record<string, string> = {
   stolen:   "text-red-400 bg-red-500/10 border-red-500/25 animate-pulse",
 };
 
-export function WardenView() {
+const normalizePlate = (p: string) => p.replace(/\s/g, "").toUpperCase();
+
+export function WardenView({ wardenId, wardenName, zones, gasPriceSyp, initialFines }: WardenViewProps) {
   const { t } = useI18n();
   const [plateInput, setPlateInput] = useState("");
   const [checkResult, setCheckResult] = useState<PlateCheckResult | null>(null);
   const [mot, setMot] = useState<MoTResult>({ status: "idle" });
-  const [finesIssued, setFinesIssued] = useState<Fine[]>(MOCK_FINES);
+  const [finesIssued, setFinesIssued] = useState<Fine[]>(initialFines);
   const [isChecking, setIsChecking] = useState(false);
   const [issuingFine, setIssuingFine] = useState(false);
-  const [currentZone] = useState(MOCK_ZONES[0]);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Patrol zone = the highest-rate (red) zone by default.
+  const currentZone = zones[0] ?? null;
 
   const showNotif = (msg: string) => {
     setNotification(msg);
@@ -64,20 +58,29 @@ export function WardenView() {
 
   const handleCheck = async () => {
     if (!plateInput.trim()) return;
+    const plate = plateInput.trim();
     setIsChecking(true);
     setMot({ status: "loading" });
 
-    // Run parking session check and MoT lookup in parallel
-    const [sessionResult, motResponse] = await Promise.all([
-      new Promise<PlateCheckResult>((resolve) =>
-        setTimeout(() => resolve(checkPlate(plateInput)), 400)
-      ),
-      fetch(`/api/vehicle-lookup?plate=${encodeURIComponent(plateInput)}&mode=verify`)
+    // Live parking-session lookup + Ministry of Transport registry, in parallel.
+    const [sessionRes, motResponse] = await Promise.all([
+      fetch(`/api/sessions?plate=${encodeURIComponent(plate)}`)
+        .then((r) => (r.ok ? r.json() : { sessions: [] }))
+        .catch(() => ({ sessions: [] })),
+      fetch(`/api/vehicle-lookup?plate=${encodeURIComponent(plate)}&mode=verify`)
         .then((r) => r.json())
         .catch(() => null),
     ]);
 
-    setCheckResult(sessionResult);
+    const sessions = (sessionRes.sessions ?? []) as ParkingSession[];
+    const active = sessions.find(
+      (s) => s.status === "active" && normalizePlate(s.license_plate) === normalizePlate(plate)
+    );
+    setCheckResult(
+      active
+        ? { plate, hasActiveSession: true, session: active, zone: active.zone }
+        : { plate, hasActiveSession: false }
+    );
     setIsChecking(false);
 
     if (!motResponse) {
@@ -94,33 +97,41 @@ export function WardenView() {
     }
   };
 
-  const handleIssueFine = () => {
-    if (!checkResult) return;
+  const handleIssueFine = async () => {
+    if (!checkResult || !currentZone || issuingFine) return;
     setIssuingFine(true);
-    setTimeout(() => {
-      const fineAmount = Math.round(calcHourlyRate(currentZone, GAS_PRICE) * 5);
-      const fine: Fine = {
-        id: `fine-new-${Date.now()}`,
-        session_id: null,
-        plate_number: checkResult.plate,
-        warden_id: WARDEN.id,
-        zone_id: currentZone.id,
-        zone: currentZone,
-        amount_credits: fineAmount,
-        status: "unpaid",
-        issued_at: new Date().toISOString(),
-        notes: "لا توجد جلسة وقوف نشطة — صادرة من الحارس",
-      };
+    try {
+      const fineAmount = Math.round(calcHourlyRate(currentZone, gasPriceSyp) * 5);
+      const res = await fetch("/api/fines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plate_number: checkResult.plate,
+          zone_id: currentZone.id,
+          amount_credits: fineAmount,
+          notes: "لا توجد جلسة وقوف نشطة — صادرة من الحارس",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showNotif(data.error ?? t("somethingWrong"));
+        return;
+      }
+      const fine: Fine = { ...data.fine, zone: currentZone };
       setFinesIssued((prev) => [fine, ...prev]);
+      const plate = checkResult.plate;
       setCheckResult(null);
       setMot({ status: "idle" });
       setPlateInput("");
+      showNotif(`${formatCredits(fineAmount)} ${t("credits")} ${t("fineIssued")} ${plate}`);
+    } catch {
+      showNotif(t("somethingWrong"));
+    } finally {
       setIssuingFine(false);
-      showNotif(`${formatCredits(fineAmount)} ${t("credits")} ${t("fineIssued")} ${checkResult.plate}`);
-    }, 800);
+    }
   };
 
-  const todayFines = finesIssued.filter((f) => f.warden_id === WARDEN.id || f.id.startsWith("fine-new"));
+  const todayFines = finesIssued.filter((f) => f.warden_id === wardenId);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -137,11 +148,11 @@ export function WardenView() {
             <ShieldAlert className="w-5 h-5 text-amber-400" />
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-200">{WARDEN.name}</p>
-            <p className="text-xs text-slate-500">{WARDEN.phone_number}</p>
+            <p className="text-sm font-bold text-slate-200">{wardenName}</p>
+            <p className="text-xs text-slate-500">{t("warden")}</p>
           </div>
         </div>
-        <ZoneBadge color={currentZone.zone_color} name={currentZone.name_ar} size="sm" />
+        {currentZone && <ZoneBadge color={currentZone.zone_color} name={currentZone.name_ar} size="sm" />}
       </div>
 
       {/* Plate scanner */}
@@ -307,7 +318,7 @@ export function WardenView() {
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 {t("noCompliance")}
               </div>
-              <button onClick={handleIssueFine} disabled={issuingFine} className="btn-danger w-full flex items-center justify-center gap-2">
+              <button onClick={handleIssueFine} disabled={issuingFine || !currentZone} className="btn-danger w-full flex items-center justify-center gap-2">
                 {issuingFine
                   ? <Loader2 className="w-4 h-4 animate-spin" />
                   : <ShieldAlert className="w-4 h-4" />

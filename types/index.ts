@@ -36,6 +36,7 @@ export interface ParkingSession {
   started_at: string;
   ended_at: string | null;
   total_cost_credits: number | null;
+  gas_price_snapshot?: number;
   status: SessionStatus;
 }
 

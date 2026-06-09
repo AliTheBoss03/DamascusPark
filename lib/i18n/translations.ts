@@ -130,6 +130,8 @@ export const translations = {
     credits_abbr: "نق",
     paid: "مسدد",
     unpaid: "غير مسدد",
+    somethingWrong: "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+    refreshing: "جارٍ التحديث…",
   },
 
   en: {
@@ -252,6 +254,8 @@ export const translations = {
     credits_abbr: "cr",
     paid: "paid",
     unpaid: "unpaid",
+    somethingWrong: "Something went wrong. Please try again.",
+    refreshing: "Refreshing…",
   },
 } as const;
 

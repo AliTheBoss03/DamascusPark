@@ -1,29 +1,44 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { MapPin, Play, Square, RefreshCw, Car, Wifi, WifiOff } from "lucide-react";
+import { useState } from "react";
+import { MapPin, Play, Square, RefreshCw, Car, Wifi, Loader2 } from "lucide-react";
 import { WalletCard } from "@/components/ui/WalletCard";
 import { ZoneBadge } from "@/components/ui/ZoneBadge";
 import { SessionTimer } from "@/components/ui/SessionTimer";
 import { ScratchCardModal } from "@/components/ui/ScratchCardModal";
 import { DamascusMap } from "@/components/DamascusMap";
 import { calcHourlyRate, calcSessionCost, formatCredits, getZoneDotColor } from "@/lib/pricing";
-import { MOCK_USERS, MOCK_ZONES, MOCK_SESSIONS, MOCK_SCRATCH_CARDS } from "@/lib/mock-data";
 import { useI18n } from "@/lib/i18n/context";
-import type { ParkingSession, ScratchCard } from "@/types";
+import type { ParkingSession, ParkingZone } from "@/types";
 
-const DRIVER = MOCK_USERS[0];
-const GAS_PRICE = 5000;
+interface DriverViewProps {
+  userName: string;
+  initialBalance: number;
+  zones: ParkingZone[];
+  initialActiveSession: ParkingSession | null;
+  recentSessions: ParkingSession[];
+  gasPriceSyp: number;
+}
 
-export function DriverView() {
+export function DriverView({
+  userName,
+  initialBalance,
+  zones,
+  initialActiveSession,
+  recentSessions,
+  gasPriceSyp,
+}: DriverViewProps) {
   const { t } = useI18n();
-  const [balance, setBalance] = useState(DRIVER.wallet_balance);
-  const [activeSession, setActiveSession] = useState<ParkingSession | null>(MOCK_SESSIONS[0]);
-  const [selectedZone, setSelectedZone] = useState(MOCK_ZONES[0]);
-  const [licensePlate, setLicensePlate] = useState("د م 1234");
+  const [balance, setBalance] = useState(initialBalance);
+  const [activeSession, setActiveSession] = useState<ParkingSession | null>(initialActiveSession);
+  const [selectedZone, setSelectedZone] = useState<ParkingZone | null>(
+    initialActiveSession?.zone ?? zones[0] ?? null
+  );
+  const [licensePlate, setLicensePlate] = useState("");
   const [showTopUp, setShowTopUp] = useState(false);
+  const [history, setHistory] = useState<ParkingSession[]>(recentSessions);
+  const [busy, setBusy] = useState(false);
   const [isOnline] = useState(true);
-  const [scratchCards, setScratchCards] = useState<ScratchCard[]>(MOCK_SCRATCH_CARDS);
   const [notification, setNotification] = useState<{ type: "success" | "error" | "info"; msg: string } | null>(null);
 
   const showNotif = (type: "success" | "error" | "info", msg: string) => {
@@ -31,51 +46,89 @@ export function DriverView() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  const handleStartSession = () => {
-    const hourlyRate = calcHourlyRate(selectedZone, GAS_PRICE);
+  // The zone shown for the live session is the one it was started in.
+  const activeZone = activeSession?.zone ?? selectedZone;
+  // Bill the active session against ITS snapshot, matching the server's charge.
+  const activeGas = activeSession?.gas_price_snapshot ?? gasPriceSyp;
+
+  const handleStartSession = async () => {
+    if (!selectedZone || !licensePlate.trim() || busy) return;
+    const hourlyRate = calcHourlyRate(selectedZone, gasPriceSyp);
     if (balance < hourlyRate) {
       showNotif("error", t("insufficientBalance"));
       return;
     }
-    const session: ParkingSession = {
-      id: `session-new-${Date.now()}`,
-      user_id: DRIVER.id,
-      zone_id: selectedZone.id,
-      zone: selectedZone,
-      license_plate: licensePlate,
-      started_at: new Date().toISOString(),
-      ended_at: null,
-      total_cost_credits: null,
-      status: "active",
-    };
-    setActiveSession(session);
-    localStorage.setItem("mawqif_active_session", JSON.stringify(session));
-    showNotif("success", `${t("sessionStarted")} ${selectedZone.name_ar}`);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zone_id: selectedZone.id, license_plate: licensePlate.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showNotif("error", data.error ?? t("somethingWrong"));
+        return;
+      }
+      setActiveSession({ ...data.session, zone: selectedZone });
+      showNotif("success", `${t("sessionStarted")} ${selectedZone.name_ar}`);
+    } catch {
+      showNotif("error", t("somethingWrong"));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleEndSession = () => {
-    if (!activeSession) return;
-    const cost = calcSessionCost(selectedZone, GAS_PRICE, activeSession.started_at);
-    const charged = Math.ceil(cost);
-    setBalance((b) => Math.max(0, b - charged));
-    setActiveSession(null);
-    localStorage.removeItem("mawqif_active_session");
-    showNotif("info", `${t("sessionEnded")} ${formatCredits(charged)} ${t("credits")}.`);
+  const handleEndSession = async () => {
+    if (!activeSession || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: activeSession.id }),
+      });
+      const data = await res.json();
+      if (res.status === 402) {
+        showNotif("error", t("insufficientBalance"));
+        return;
+      }
+      if (!res.ok) {
+        showNotif("error", data.error ?? t("somethingWrong"));
+        return;
+      }
+      const charged = data.charged_credits ?? 0;
+      setBalance((b) => Math.max(0, b - charged));
+      const ended: ParkingSession = { ...activeSession, ...data.session, zone: activeZone ?? undefined };
+      setHistory((h) => [ended, ...h].slice(0, 5));
+      setActiveSession(null);
+      showNotif("info", `${t("sessionEnded")} ${formatCredits(charged)} ${t("credits")}.`);
+    } catch {
+      showNotif("error", t("somethingWrong"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleRedeem = async (pin: string): Promise<{ credits: number } | { error: string }> => {
-    const card = scratchCards.find((c) => c.pin.toUpperCase() === pin && !c.is_used);
-    if (!card) {
-      const used = scratchCards.find((c) => c.pin.toUpperCase() === pin);
-      return { error: used ? "هذه القسيمة مستخدمة بالفعل." : "رمز غير صحيح. يرجى المحاولة مجدداً." };
+    try {
+      const res = await fetch("/api/wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error ?? t("somethingWrong") };
+      setBalance((b) => b + data.credits);
+      return { credits: data.credits };
+    } catch {
+      return { error: t("somethingWrong") };
     }
-    setScratchCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, is_used: true } : c)));
-    setBalance((b) => b + card.credit_value);
-    return { credits: card.credit_value };
   };
 
-  const currentCost = activeSession ? calcSessionCost(selectedZone, GAS_PRICE, activeSession.started_at) : 0;
-  const hourlyRate = calcHourlyRate(selectedZone, GAS_PRICE);
+  const currentCost =
+    activeSession && activeZone ? calcSessionCost(activeZone, activeGas, activeSession.started_at) : 0;
+  const hourlyRate = selectedZone ? calcHourlyRate(selectedZone, gasPriceSyp) : 0;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -92,17 +145,17 @@ export function DriverView() {
       {/* Status bar */}
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-400">{t("myDashboard")}</h2>
-        <div className={`flex items-center gap-1.5 text-xs font-medium ${isOnline ? "text-green-400" : "text-amber-400"}`}>
-          {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-          {isOnline ? t("onlineStatus") : t("offlineStatus")}
+        <div className="flex items-center gap-1.5 text-xs font-medium text-green-400">
+          <Wifi className="w-3.5 h-3.5" />
+          {t("onlineStatus")}
         </div>
       </div>
 
       {/* Wallet */}
-      <WalletCard balance={balance} gasPriceSyp={GAS_PRICE} userName={DRIVER.name} onTopUp={() => setShowTopUp(true)} />
+      <WalletCard balance={balance} gasPriceSyp={gasPriceSyp} userName={userName} onTopUp={() => setShowTopUp(true)} />
 
       {/* Active session or start form */}
-      {activeSession ? (
+      {activeSession && activeZone ? (
         <div className="card p-5 border-amber-500/20 bg-amber-950/10 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none" />
           <div className="relative">
@@ -114,9 +167,9 @@ export function DriverView() {
                     {t("activeSession")}
                   </span>
                 </div>
-                <h3 className="text-lg font-bold text-slate-100 font-mono">{activeSession.license_plate}</h3>
+                <h3 className="text-lg font-bold text-slate-100 font-mono" dir="ltr">{activeSession.license_plate}</h3>
               </div>
-              <ZoneBadge color={selectedZone.zone_color} name={selectedZone.name} nameAr={selectedZone.name_ar} size="sm" />
+              <ZoneBadge color={activeZone.zone_color} name={activeZone.name} nameAr={activeZone.name_ar} size="sm" />
             </div>
 
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -133,13 +186,13 @@ export function DriverView() {
               <div className="card-elevated p-3 text-center">
                 <p className="text-xs text-slate-500 mb-1">{t("ratePerHour")}</p>
                 <p className="text-sm font-semibold text-slate-300 tabular-nums">
-                  {formatCredits(hourlyRate)} {t("credits_abbr")}
+                  {formatCredits(calcHourlyRate(activeZone, activeGas))} {t("credits_abbr")}
                 </p>
               </div>
             </div>
 
-            <button onClick={handleEndSession} className="btn-danger w-full flex items-center justify-center gap-2">
-              <Square className="w-4 h-4" />
+            <button onClick={handleEndSession} disabled={busy} className="btn-danger w-full flex items-center justify-center gap-2">
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
               {t("endParking")}
             </button>
           </div>
@@ -159,18 +212,19 @@ export function DriverView() {
               onChange={(e) => setLicensePlate(e.target.value)}
               className="input-field font-mono text-center text-base tracking-widest"
               placeholder={t("platePlaceholder")}
+              dir="ltr"
             />
           </div>
 
           <div>
             <label className="block text-xs text-slate-400 mb-2">{t("selectZone")}</label>
             <div className="grid grid-cols-3 gap-2">
-              {MOCK_ZONES.map((zone) => (
+              {zones.map((zone) => (
                 <button
                   key={zone.id}
                   onClick={() => setSelectedZone(zone)}
                   className={`p-3 rounded-xl border text-start transition-all duration-150
-                    ${selectedZone.id === zone.id
+                    ${selectedZone?.id === zone.id
                       ? zone.zone_color === "red" ? "border-red-500/60 bg-red-500/10"
                         : zone.zone_color === "yellow" ? "border-amber-500/60 bg-amber-500/10"
                         : "border-green-500/60 bg-green-500/10"
@@ -180,32 +234,34 @@ export function DriverView() {
                   <span className={`w-2.5 h-2.5 rounded-full block mb-2 ${getZoneDotColor(zone.zone_color)}`} />
                   <p className="text-xs font-semibold text-slate-200 leading-tight">{zone.name_ar}</p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {formatCredits(calcHourlyRate(zone, GAS_PRICE))}/{t("credits_abbr")}
+                    {formatCredits(calcHourlyRate(zone, gasPriceSyp))}/{t("credits_abbr")}
                   </p>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50 rounded-xl p-3">
-            <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>
-              {t("gpsDetected")}{" "}
-              <span className="text-slate-300">{selectedZone.name_ar}</span>
-              {" · "}
-              <span className="text-amber-400">{formatCredits(hourlyRate)} {t("credits")}/{t("credits_abbr")}</span>
-            </span>
-          </div>
+          {selectedZone && (
+            <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50 rounded-xl p-3">
+              <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>
+                {t("gpsDetected")}{" "}
+                <span className="text-slate-300">{selectedZone.name_ar}</span>
+                {" · "}
+                <span className="text-amber-400">{formatCredits(hourlyRate)} {t("credits")}/{t("credits_abbr")}</span>
+              </span>
+            </div>
+          )}
 
-          <button onClick={handleStartSession} disabled={!licensePlate.trim()} className="btn-primary w-full flex items-center justify-center gap-2">
-            <Play className="w-4 h-4" />
+          <button onClick={handleStartSession} disabled={!licensePlate.trim() || !selectedZone || busy} className="btn-primary w-full flex items-center justify-center gap-2">
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             {t("startParking")}
           </button>
         </div>
       )}
 
       {/* Map */}
-      <DamascusMap activeZone={activeSession ? selectedZone : null} showDriverPin />
+      <DamascusMap activeZone={activeSession ? activeZone : null} showDriverPin />
 
       {/* Recent sessions */}
       <div className="card p-5">
@@ -213,17 +269,21 @@ export function DriverView() {
           <RefreshCw className="w-4 h-4" />
           {t("recentSessions")}
         </h3>
-        <div className="space-y-2">
-          {MOCK_SESSIONS.filter((s) => s.status === "completed").map((s) => (
-            <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-slate-700/50 last:border-0">
-              <div className="flex items-center gap-2">
-                {s.zone && <ZoneBadge color={s.zone.zone_color} name={s.zone.name_ar ?? s.zone.name} size="sm" />}
-                <span className="text-sm font-mono text-slate-300">{s.license_plate}</span>
+        {history.length === 0 ? (
+          <p className="text-sm text-slate-600 text-center py-3">{t("noActiveSession")}</p>
+        ) : (
+          <div className="space-y-2">
+            {history.map((s) => (
+              <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-slate-700/50 last:border-0">
+                <div className="flex items-center gap-2">
+                  {s.zone && <ZoneBadge color={s.zone.zone_color} name={s.zone.name_ar ?? s.zone.name} size="sm" />}
+                  <span className="text-sm font-mono text-slate-300" dir="ltr">{s.license_plate}</span>
+                </div>
+                <span className="text-sm font-semibold text-amber-400">-{s.total_cost_credits} {t("credits_abbr")}</span>
               </div>
-              <span className="text-sm font-semibold text-amber-400">-{s.total_cost_credits} {t("credits_abbr")}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {showTopUp && <ScratchCardModal onClose={() => setShowTopUp(false)} onRedeem={handleRedeem} />}

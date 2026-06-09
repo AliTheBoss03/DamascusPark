@@ -4,30 +4,36 @@ import { useState } from "react";
 import { TrendingUp, Car, ShieldAlert, Building2, Cpu, Zap, AlertCircle, CheckCircle2 } from "lucide-react";
 import { ZoneBadge } from "@/components/ui/ZoneBadge";
 import { calcHourlyRate, splitRevenue, formatCredits } from "@/lib/pricing";
-import { MOCK_ZONES, MOCK_SESSIONS, MOCK_FINES, MOCK_SETTINGS } from "@/lib/mock-data";
 import { useI18n } from "@/lib/i18n/context";
+import type { ParkingZone, ParkingSession, Fine } from "@/types";
 
-function getTotalRevenue() {
-  const sessionRevenue = MOCK_SESSIONS.filter((s) => s.status === "completed" && s.total_cost_credits)
-    .reduce((sum, s) => sum + (s.total_cost_credits ?? 0), 0);
-  const fineRevenue = MOCK_FINES.filter((f) => f.status === "paid").reduce((sum, f) => sum + f.amount_credits, 0);
-  return sessionRevenue + fineRevenue;
+interface AdminViewProps {
+  zones: ParkingZone[];
+  sessions: ParkingSession[];
+  fines: Fine[];
+  initialGasPrice: number;
+  govPct: number;
 }
 
-export function AdminView() {
+export function AdminView({ zones, sessions, fines, initialGasPrice, govPct }: AdminViewProps) {
   const { t } = useI18n();
-  const defaultGasPrice = parseInt(MOCK_SETTINGS.find((s) => s.key === "gas_price_per_liter_syp")?.value ?? "5000");
-  const [gasPriceSyp, setGasPriceSyp] = useState(defaultGasPrice);
-  const [gasInput, setGasInput] = useState(String(defaultGasPrice));
+  const [gasPriceSyp, setGasPriceSyp] = useState(initialGasPrice);
+  const [gasInput, setGasInput] = useState(String(initialGasPrice));
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
 
-  const activeSessions = MOCK_SESSIONS.filter((s) => s.status === "active");
-  const totalRevenue = getTotalRevenue();
-  const { government: govShare, platform: platShare } = splitRevenue(totalRevenue);
-  const unpaidFines = MOCK_FINES.filter((f) => f.status === "unpaid").length;
+  const activeSessions = sessions.filter((s) => s.status === "active");
+  const sessionRevenue = sessions
+    .filter((s) => s.status === "completed")
+    .reduce((sum, s) => sum + (s.total_cost_credits ?? 0), 0);
+  const fineRevenue = fines
+    .filter((f) => f.status === "paid")
+    .reduce((sum, f) => sum + f.amount_credits, 0);
+  const totalRevenue = sessionRevenue + fineRevenue;
+  const { government: govShare, platform: platShare } = splitRevenue(totalRevenue, govPct);
+  const unpaidFines = fines.filter((f) => f.status === "unpaid").length;
 
-  const handleSaveGasPrice = () => {
+  const handleSaveGasPrice = async () => {
     const value = parseInt(gasInput.replace(/[^0-9]/g, ""));
     if (isNaN(value) || value < 100 || value > 100_000) {
       setSaveStatus("error");
@@ -35,21 +41,37 @@ export function AdminView() {
       return;
     }
     setSaving(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "gas_price_per_liter_syp", value: String(value) }),
+      });
+      if (!res.ok) {
+        setSaveStatus("error");
+        return;
+      }
       setGasPriceSyp(value);
-      setSaving(false);
       setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    } finally {
+      setSaving(false);
       setTimeout(() => setSaveStatus("idle"), 3000);
-    }, 700);
+    }
   };
 
-  const zoneStats = MOCK_ZONES.map((zone) => {
-    const zoneSessions = MOCK_SESSIONS.filter((s) => s.zone_id === zone.id);
+  const zoneStats = zones.map((zone) => {
+    const zoneSessions = sessions.filter((s) => s.zone_id === zone.id);
     const zoneActive = zoneSessions.filter((s) => s.status === "active").length;
-    const zoneRevenue = zoneSessions.filter((s) => s.status === "completed").reduce((sum, s) => sum + (s.total_cost_credits ?? 0), 0);
+    const zoneRevenue = zoneSessions
+      .filter((s) => s.status === "completed")
+      .reduce((sum, s) => sum + (s.total_cost_credits ?? 0), 0);
     const rate = calcHourlyRate(zone, gasPriceSyp);
     return { zone, active: zoneActive, revenue: zoneRevenue, rate };
   });
+
+  const maxZoneRevenue = Math.max(...zoneStats.map((z) => z.revenue), 1);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -83,7 +105,7 @@ export function AdminView() {
             <p className="text-xl font-bold tabular-nums text-blue-400">{formatCredits(govShare)} {t("credits_abbr")}</p>
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-slate-700 overflow-hidden">
-            <div className="h-full rounded-full bg-blue-500" style={{ width: "60%" }} />
+            <div className="h-full rounded-full bg-blue-500" style={{ width: `${govPct}%` }} />
           </div>
         </div>
 
@@ -94,7 +116,7 @@ export function AdminView() {
             <p className="text-xl font-bold tabular-nums text-purple-400">{formatCredits(platShare)} {t("credits_abbr")}</p>
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-slate-700 overflow-hidden">
-            <div className="h-full rounded-full bg-purple-500" style={{ width: "40%" }} />
+            <div className="h-full rounded-full bg-purple-500" style={{ width: `${100 - govPct}%` }} />
           </div>
         </div>
       </div>
@@ -134,7 +156,7 @@ export function AdminView() {
                     className={`h-full rounded-full transition-all duration-500 ${
                       zone.zone_color === "red" ? "bg-red-500" : zone.zone_color === "yellow" ? "bg-amber-500" : "bg-green-500"
                     }`}
-                    style={{ width: Math.max(5, (revenue / Math.max(...zoneStats.map((z) => z.revenue), 1)) * 100) + "%" }}
+                    style={{ width: Math.max(5, (revenue / maxZoneRevenue) * 100) + "%" }}
                   />
                 </div>
               </div>
@@ -154,7 +176,7 @@ export function AdminView() {
         ) : (
           <div className="space-y-2">
             {activeSessions.map((s) => {
-              const zone = MOCK_ZONES.find((z) => z.id === s.zone_id);
+              const zone = s.zone ?? zones.find((z) => z.id === s.zone_id);
               return (
                 <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-slate-700/50 last:border-0">
                   <div className="flex items-center gap-2">
@@ -189,7 +211,7 @@ export function AdminView() {
             {t("effectiveRates")}{" "}
             <span className="text-amber-400 font-bold">{gasPriceSyp.toLocaleString("ar-SY")} ل.س/ل</span>
           </p>
-          {MOCK_ZONES.map((zone) => (
+          {zones.map((zone) => (
             <div key={zone.id} className="flex items-center justify-between">
               <ZoneBadge color={zone.zone_color} name={zone.name_ar} size="sm" />
               <span className="text-sm font-bold tabular-nums text-slate-200">
@@ -220,7 +242,7 @@ export function AdminView() {
               <p className="font-medium text-slate-400 mb-2">
                 {t("previewAt")} {parseInt(gasInput).toLocaleString()} ل.س/ل:
               </p>
-              {MOCK_ZONES.map((zone) => (
+              {zones.map((zone) => (
                 <div key={zone.id} className="flex items-center justify-between">
                   <span className="text-slate-500">{zone.name_ar}</span>
                   <span className="font-semibold text-amber-400">
