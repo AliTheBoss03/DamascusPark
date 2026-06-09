@@ -31,7 +31,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <>
       {/* ── Left panel – Branding ──────────────────────────────── */}
-      <div className="hidden lg:flex lg:w-1/2 xl:w-3/5 flex-col bg-slate-900 border-r border-slate-800 p-12 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 xl:w-3/5 flex-col bg-slate-900 border-e border-slate-800 p-12 relative overflow-hidden">
         {/* Background gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-slate-950/50 pointer-events-none" />
         {/* Grid pattern */}

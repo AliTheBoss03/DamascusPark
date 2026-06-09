@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 /* ── RTL / Bidirectional support ───────────────────────── */
-/* Cairo renders Arabic and Latin from the same font file */
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
+/* Cairo (Arabic + Latin in one face) is loaded via next/font as
+   --font-cairo in app/layout.tsx — no @import needed here. */
 
 :root {
   --bg-primary: #0f172a;
@@ -20,7 +20,9 @@ html,
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  /* Match the next/font Cairo face used by the Tailwind `font-sans` utility
+     so html-level inheritance is consistent in both Arabic and English. */
+  font-family: var(--font-cairo), "Cairo", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
