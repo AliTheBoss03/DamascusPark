@@ -97,33 +97,51 @@ export async function POST(request: NextRequest) {
 
   const credits = payload.credits ?? creditFromSyp(payload.amount_syp);
 
-  // ── Credit user wallet ────────────────────────────────────────────────────
+  // ── Credit user wallet — idempotent on transaction_id ─────────────────────
+  // process_paymera_topup records the event and credits the wallet in a single
+  // transaction. A retried delivery returns { duplicate: true } and credits
+  // nothing; a mid-failure rolls the whole thing back so a later retry works.
   const db = createAdminClient();
   if (db) {
-    const { error } = await db.rpc("add_wallet_balance", {
-      p_user_id: payload.merchant_ref,
-      p_amount:  credits,
-      p_ref_id:  null,
-      p_reason:  `paymera:${payload.payment_method}:${payload.transaction_id}`,
+    const { data, error } = await db.rpc("process_paymera_topup", {
+      p_transaction_id: payload.transaction_id,
+      p_user_id:        payload.merchant_ref,
+      p_credits:        credits,
+      p_amount_syp:     payload.amount_syp,
+      p_method:         payload.payment_method,
     });
 
     if (error) {
-      console.error("[Paymera Webhook] wallet credit failed:", error.message);
-      return NextResponse.json({ error: "Wallet credit failed" }, { status: 500 });
+      console.error("[Paymera Webhook] top-up failed:", error.message);
+      const notFound = error.message?.includes("not found");
+      return NextResponse.json(
+        { error: notFound ? "Unknown merchant_ref" : "Wallet credit failed" },
+        { status: notFound ? 404 : 500 }
+      );
     }
-  } else {
-    // Mock mode: just log — no DB available
-    console.log(
-      `[Paymera Webhook MOCK] +${credits} credits → user ${payload.merchant_ref} ` +
-      `via ${payload.payment_method} (txn: ${payload.transaction_id})`
-    );
+
+    const result = (data ?? {}) as { duplicate?: boolean; new_balance?: number };
+    return NextResponse.json({
+      received: true,
+      transaction_id: payload.transaction_id,
+      duplicate: result.duplicate ?? false,
+      credits_applied: result.duplicate ? 0 : credits,
+      new_balance: result.new_balance,
+      user_id: payload.merchant_ref,
+    });
   }
 
+  // Mock mode: no DB available — just log.
+  console.log(
+    `[Paymera Webhook MOCK] +${credits} credits → user ${payload.merchant_ref} ` +
+    `via ${payload.payment_method} (txn: ${payload.transaction_id})`
+  );
   return NextResponse.json({
     received: true,
     transaction_id: payload.transaction_id,
     credits_applied: credits,
     user_id: payload.merchant_ref,
+    mock: true,
   });
 }
 

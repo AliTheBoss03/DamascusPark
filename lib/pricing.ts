@@ -49,8 +49,8 @@ export function formatCredits(credits: number): string {
   });
 }
 
-/** Convert credits to approximate SYP for display */
-export function creditsToSyp(credits: number, gasPriceSyp: number): number {
+/** Convert credits to SYP for display. Fixed peg: 1 credit = 1000 SYP. */
+export function creditsToSyp(credits: number): number {
   return credits * 1000;
 }
 
