@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Search, ShieldAlert, CheckCircle2, AlertTriangle, Clock, XCircle } from "lucide-react";
+import {
+  Search, ShieldAlert, CheckCircle2, AlertTriangle,
+  Clock, XCircle, Car, FileWarning, Loader2,
+} from "lucide-react";
 import { ZoneBadge } from "@/components/ui/ZoneBadge";
 import { SessionTimer } from "@/components/ui/SessionTimer";
 import { formatCredits, calcHourlyRate } from "@/lib/pricing";
 import { MOCK_SESSIONS, MOCK_FINES, MOCK_USERS, MOCK_ZONES } from "@/lib/mock-data";
 import { useI18n } from "@/lib/i18n/context";
 import type { Fine, PlateCheckResult } from "@/types";
+import type { VehicleRecord } from "@/lib/services/syrian-transport-api";
 
 const WARDEN = MOCK_USERS[2];
 const GAS_PRICE = 5000;
@@ -15,7 +19,8 @@ const GAS_PRICE = 5000;
 function checkPlate(plate: string): PlateCheckResult {
   const normalized = plate.trim().toUpperCase();
   const session = MOCK_SESSIONS.find(
-    (s) => s.status === "active" && s.license_plate.toUpperCase().replace(/\s/g, "") === normalized.replace(/\s/g, "")
+    (s) => s.status === "active" &&
+      s.license_plate.toUpperCase().replace(/\s/g, "") === normalized.replace(/\s/g, "")
   );
   if (session) {
     const zone = MOCK_ZONES.find((z) => z.id === session.zone_id);
@@ -25,10 +30,27 @@ function checkPlate(plate: string): PlateCheckResult {
   return { plate: plate.trim(), hasActiveSession: false };
 }
 
+type MoTStatus = "idle" | "loading" | "found" | "not_found" | "error";
+
+interface MoTResult {
+  status: MoTStatus;
+  record?: VehicleRecord;
+  isRegistrationValid?: boolean;
+  reason?: string;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  valid:    "text-green-400 bg-green-500/10 border-green-500/25",
+  expired:  "text-red-400 bg-red-500/10 border-red-500/25",
+  suspended:"text-amber-400 bg-amber-500/10 border-amber-500/25",
+  stolen:   "text-red-400 bg-red-500/10 border-red-500/25 animate-pulse",
+};
+
 export function WardenView() {
   const { t } = useI18n();
   const [plateInput, setPlateInput] = useState("");
   const [checkResult, setCheckResult] = useState<PlateCheckResult | null>(null);
+  const [mot, setMot] = useState<MoTResult>({ status: "idle" });
   const [finesIssued, setFinesIssued] = useState<Fine[]>(MOCK_FINES);
   const [isChecking, setIsChecking] = useState(false);
   const [issuingFine, setIssuingFine] = useState(false);
@@ -40,21 +62,43 @@ export function WardenView() {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const handleCheck = () => {
+  const handleCheck = async () => {
     if (!plateInput.trim()) return;
     setIsChecking(true);
-    setTimeout(() => {
-      setCheckResult(checkPlate(plateInput));
-      setIsChecking(false);
-    }, 600);
+    setMot({ status: "loading" });
+
+    // Run parking session check and MoT lookup in parallel
+    const [sessionResult, motResponse] = await Promise.all([
+      new Promise<PlateCheckResult>((resolve) =>
+        setTimeout(() => resolve(checkPlate(plateInput)), 400)
+      ),
+      fetch(`/api/vehicle-lookup?plate=${encodeURIComponent(plateInput)}&mode=verify`)
+        .then((r) => r.json())
+        .catch(() => null),
+    ]);
+
+    setCheckResult(sessionResult);
+    setIsChecking(false);
+
+    if (!motResponse) {
+      setMot({ status: "error", reason: "تعذّر الاتصال بسجل وزارة النقل" });
+    } else if (motResponse.record) {
+      setMot({
+        status: "found",
+        record: motResponse.record,
+        isRegistrationValid: motResponse.isValid,
+        reason: motResponse.reason,
+      });
+    } else {
+      setMot({ status: "not_found", reason: motResponse.reason });
+    }
   };
 
   const handleIssueFine = () => {
     if (!checkResult) return;
     setIssuingFine(true);
     setTimeout(() => {
-      const hourlyRate = calcHourlyRate(currentZone, GAS_PRICE);
-      const fineAmount = Math.round(hourlyRate * 5);
+      const fineAmount = Math.round(calcHourlyRate(currentZone, GAS_PRICE) * 5);
       const fine: Fine = {
         id: `fine-new-${Date.now()}`,
         session_id: null,
@@ -69,6 +113,7 @@ export function WardenView() {
       };
       setFinesIssued((prev) => [fine, ...prev]);
       setCheckResult(null);
+      setMot({ status: "idle" });
       setPlateInput("");
       setIssuingFine(false);
       showNotif(`${formatCredits(fineAmount)} ${t("credits")} ${t("fineIssued")} ${checkResult.plate}`);
@@ -110,7 +155,7 @@ export function WardenView() {
           <input
             type="text"
             value={plateInput}
-            onChange={(e) => { setPlateInput(e.target.value); setCheckResult(null); }}
+            onChange={(e) => { setPlateInput(e.target.value); setCheckResult(null); setMot({ status: "idle" }); }}
             onKeyDown={(e) => e.key === "Enter" && handleCheck()}
             placeholder={t("enterPlate")}
             className="input-field font-mono text-center tracking-widest text-base flex-1"
@@ -118,10 +163,7 @@ export function WardenView() {
             dir="ltr"
           />
           <button onClick={handleCheck} disabled={!plateInput.trim() || isChecking} className="btn-primary px-5">
-            {isChecking
-              ? <span className="w-4 h-4 border-2 border-slate-900/40 border-t-slate-900 rounded-full animate-spin inline-block" />
-              : <Search className="w-4 h-4" />
-            }
+            {isChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           </button>
         </div>
 
@@ -131,9 +173,8 @@ export function WardenView() {
             {["د م 1234", "ر س 9900", "ح ل 4455", "ط ب 0000"].map((p) => (
               <button
                 key={p}
-                onClick={() => { setPlateInput(p); setCheckResult(null); }}
-                className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-mono
-                           text-slate-400 hover:border-slate-500 hover:text-slate-200 transition-colors"
+                onClick={() => { setPlateInput(p); setCheckResult(null); setMot({ status: "idle" }); }}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-mono text-slate-400 hover:border-slate-500 hover:text-slate-200 transition-colors"
                 dir="ltr"
               >
                 {p}
@@ -143,7 +184,90 @@ export function WardenView() {
         </div>
       </div>
 
-      {/* Check result */}
+      {/* MoT Vehicle Registry Card */}
+      {mot.status !== "idle" && (
+        <div className="card p-5 animate-fade-in">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+              <Car className="w-4 h-4 text-blue-400" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                وزارة النقل — سجل المركبات
+              </p>
+              <p className="text-xs text-slate-600">Syrian Ministry of Transport Registry v2</p>
+            </div>
+            {mot.status === "loading" && (
+              <Loader2 className="w-4 h-4 text-slate-500 animate-spin ms-auto" />
+            )}
+          </div>
+
+          {mot.status === "loading" && (
+            <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
+              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+              جارٍ الاستعلام من قاعدة بيانات الوزارة…
+            </div>
+          )}
+
+          {mot.status === "error" && (
+            <p className="text-sm text-amber-400 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              {mot.reason}
+            </p>
+          )}
+
+          {mot.status === "not_found" && (
+            <p className="text-sm text-red-400 flex items-center gap-2">
+              <XCircle className="w-4 h-4 shrink-0" />
+              {mot.reason}
+            </p>
+          )}
+
+          {mot.status === "found" && mot.record && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "المالك", value: mot.record.ownerName },
+                  { label: "المركبة", value: `${mot.record.vehicleMake} ${mot.record.vehicleModel} ${mot.record.vehicleYear}` },
+                  { label: "اللون", value: mot.record.vehicleColor },
+                  { label: "التأمين", value: mot.record.insuranceStatus === "active" ? "ساري" : "منتهي" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="card-elevated p-2.5">
+                    <p className="text-xs text-slate-600 mb-0.5">{label}</p>
+                    <p className="text-xs font-semibold text-slate-200">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Registration status */}
+              <div className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-semibold ${
+                STATUS_COLORS[mot.record.registrationStatus] ?? "text-slate-400"
+              }`}>
+                <span>تسجيل المركبة</span>
+                <span>
+                  {mot.record.registrationStatus === "valid" ? "✓ صالح حتى " + mot.record.registrationExpiry
+                    : mot.record.registrationStatus === "expired" ? "✗ منتهي منذ " + mot.record.registrationExpiry
+                    : mot.record.registrationStatus === "stolen" ? "⚠ مسروقة — أبلغ الشرطة فوراً"
+                    : "موقوف"}
+                </span>
+              </div>
+
+              {mot.record.outstandingFines > 0 && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-xl">
+                  <FileWarning className="w-3.5 h-3.5 shrink-0" />
+                  {mot.record.outstandingFines} نقطة مخالفة معلّقة على هذه المركبة
+                </div>
+              )}
+
+              {mot.reason && !mot.isRegistrationValid && (
+                <p className="text-xs text-amber-400">{mot.reason}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Parking session result */}
       {checkResult && (
         <div className={`card p-5 animate-fade-in ${
           checkResult.hasActiveSession ? "border-green-500/25 bg-green-950/10" : "border-red-500/25 bg-red-950/10"
@@ -185,7 +309,7 @@ export function WardenView() {
               </div>
               <button onClick={handleIssueFine} disabled={issuingFine} className="btn-danger w-full flex items-center justify-center gap-2">
                 {issuingFine
-                  ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
                   : <ShieldAlert className="w-4 h-4" />
                 }
                 {issuingFine ? t("issuingFine") : t("issueFine")}
@@ -206,7 +330,6 @@ export function WardenView() {
             {todayFines.length}
           </span>
         </div>
-
         {todayFines.length === 0 ? (
           <p className="text-sm text-slate-600 text-center py-4">{t("noFinesYet")}</p>
         ) : (
@@ -218,9 +341,7 @@ export function WardenView() {
                   <span className="text-sm font-mono text-slate-300" dir="ltr">{fine.plate_number}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-red-400">
-                    {formatCredits(fine.amount_credits)} {t("credits_abbr")}
-                  </span>
+                  <span className="text-sm font-bold text-red-400">{formatCredits(fine.amount_credits)} {t("credits_abbr")}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     fine.status === "paid" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
                   }`}>
