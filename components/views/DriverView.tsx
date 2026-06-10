@@ -6,7 +6,7 @@ import { WalletCard } from "@/components/ui/WalletCard";
 import { ZoneBadge } from "@/components/ui/ZoneBadge";
 import { SessionTimer } from "@/components/ui/SessionTimer";
 import { ScratchCardModal } from "@/components/ui/ScratchCardModal";
-import { DamascusMap } from "@/components/DamascusMap";
+import { LiveMap } from "@/components/map/LiveMap";
 import { calcHourlyRate, calcSessionCost, formatCredits, getZoneDotColor } from "@/lib/pricing";
 import { useLiveLocation } from "@/lib/hooks/useLiveLocation";
 import { useI18n } from "@/lib/i18n/context";
@@ -274,7 +274,12 @@ export function DriverView({
       )}
 
       {/* Map */}
-      <DamascusMap activeZone={activeSession ? activeZone : null} showDriverPin />
+      <LiveMap
+        center={live.position}
+        zones={zones}
+        activeZoneId={(activeSession ? activeZone?.id : live.currentZone?.id) ?? null}
+        isDefault={live.isDefault}
+      />
 
       {/* Recent sessions */}
       <div className="card p-5">

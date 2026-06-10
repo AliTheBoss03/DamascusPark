@@ -136,3 +136,13 @@
 .location-ping {
   animation: ping-location 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
+
+/* ── Leaflet / OpenStreetMap ───────────────────────────── */
+.leaflet-container {
+  background: hsl(var(--slate-800));
+  font-family: inherit;
+}
+/* Render the bright OSM tiles as a dark basemap in dark mode. */
+.dark .leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.85);
+}

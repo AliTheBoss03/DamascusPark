@@ -4,6 +4,8 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: [],
   },
+  // react-leaflet ships ESM; transpile it for the Next bundler.
+  transpilePackages: ["react-leaflet", "@react-leaflet/core"],
 };
 
 module.exports = nextConfig;
