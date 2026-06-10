@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import L from "leaflet";
 import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip, useMap } from "react-leaflet";
+import { LocateFixed } from "lucide-react";
 import "leaflet/dist/leaflet.css";
+import { useI18n } from "@/lib/i18n/context";
+import { DAMASCUS_CENTER } from "@/lib/hooks/useLiveLocation";
 import type { ParkingZone } from "@/types";
 import type { LatLng } from "@/lib/hooks/useLiveLocation";
 
@@ -12,13 +16,56 @@ const ZONE_HEX: Record<string, string> = {
   green: "#22c55e",
 };
 
-/** Keeps the map centered on the live position as it updates. */
-function Recenter({ center }: { center: LatLng }) {
+/** Frame all parking zones once on mount so Damascus is visible immediately. */
+function FitZones({ zones }: { zones: ParkingZone[] }) {
   const map = useMap();
+  const done = useRef(false);
   useEffect(() => {
-    map.setView([center.lat, center.lng], map.getZoom(), { animate: true });
-  }, [center.lat, center.lng, map]);
+    if (done.current) return;
+    const pts: [number, number][] = [];
+    for (const z of zones) {
+      const ring = (z.coordinates?.coordinates?.[0] ?? []) as [number, number][];
+      for (const [lng, lat] of ring) pts.push([lat, lng]);
+    }
+    if (pts.length >= 2) {
+      map.fitBounds(L.latLngBounds(pts), { padding: [24, 24] });
+      done.current = true;
+    }
+  }, [map, zones]);
   return null;
+}
+
+/**
+ * One-shot "recenter on my location" control. The map no longer follows the
+ * GPS automatically — the user pans freely and taps this to jump back.
+ */
+function LocateButton({ position }: { position: LatLng }) {
+  const map = useMap();
+  const { t } = useI18n();
+  const ref = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      // Keep clicks/scroll on the button from dragging/zooming the map.
+      L.DomEvent.disableClickPropagation(ref.current);
+      L.DomEvent.disableScrollPropagation(ref.current);
+    }
+  }, []);
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() =>
+        map.setView([position.lat, position.lng], Math.max(map.getZoom(), 15), { animate: true })
+      }
+      aria-label={t("myLocation")}
+      title={t("myLocation")}
+      className="absolute top-3 right-3 z-[1000] p-2 rounded-lg bg-slate-800/90 border border-slate-700 text-amber-500 dark:text-amber-400 shadow-lg hover:bg-slate-700 transition-colors"
+    >
+      <LocateFixed className="w-4 h-4" />
+    </button>
+  );
 }
 
 export interface LeafletMapProps {
@@ -31,8 +78,10 @@ export interface LeafletMapProps {
 export default function LeafletMap({ center, zones, activeZoneId, isDefault }: LeafletMapProps) {
   return (
     <MapContainer
-      center={[center.lat, center.lng]}
-      zoom={14}
+      // Open on Damascus (the zones) regardless of where the user is; the live
+      // marker + locate button handle "where am I".
+      center={[DAMASCUS_CENTER.lat, DAMASCUS_CENTER.lng]}
+      zoom={13}
       scrollWheelZoom={false}
       className="z-0 h-full w-full"
     >
@@ -81,7 +130,8 @@ export default function LeafletMap({ center, zones, activeZoneId, isDefault }: L
         <Tooltip direction="top">{isDefault ? "Damascus" : "You"}</Tooltip>
       </CircleMarker>
 
-      <Recenter center={center} />
+      <FitZones zones={zones} />
+      <LocateButton position={center} />
     </MapContainer>
   );
 }

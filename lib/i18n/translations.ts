@@ -160,6 +160,7 @@ export const translations = {
     back: "رجوع",
     suggested: "مقترح",
     gpsSuggestZone: "موقعك الحالي ضمن منطقة",
+    myLocation: "موقعي",
   },
 
   en: {
@@ -312,6 +313,7 @@ export const translations = {
     back: "Back",
     suggested: "Suggested",
     gpsSuggestZone: "You're currently inside",
+    myLocation: "My location",
   },
 } as const;
 
