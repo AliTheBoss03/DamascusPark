@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, Mail, Car, Plus, X, Save, Check, Loader2, Palette, Globe } from "lucide-react";
+import { User, Mail, Car, Plus, X, Save, Check, Loader2, Palette, Globe, ArrowLeft, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -13,6 +14,7 @@ interface SettingsFormProps {
   initialName: string;
   initialLanguage: Locale;
   initialVehicles: string[];
+  backHref: string;
 }
 
 const norm = (p: string) => p.replace(/\s/g, "").toUpperCase();
@@ -22,8 +24,9 @@ export function SettingsForm({
   initialName,
   initialLanguage,
   initialVehicles,
+  backHref,
 }: SettingsFormProps) {
-  const { t, setLocale } = useI18n();
+  const { t, setLocale, dir } = useI18n();
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [language, setLanguage] = useState<Locale>(initialLanguage);
@@ -83,9 +86,18 @@ export function SettingsForm({
 
   return (
     <div className="space-y-4 animate-fade-in pb-4">
-      <div>
-        <h2 className="text-lg font-bold text-slate-100">{t("settings")}</h2>
-        <p className="text-sm text-slate-500">{t("settingsSubtitle")}</p>
+      <div className="flex items-center gap-3">
+        <Link
+          href={backHref}
+          aria-label={t("back")}
+          className="p-2 rounded-xl border border-slate-700 bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors shrink-0"
+        >
+          {dir === "rtl" ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+        </Link>
+        <div>
+          <h2 className="text-lg font-bold text-slate-100">{t("settings")}</h2>
+          <p className="text-sm text-slate-500">{t("settingsSubtitle")}</p>
+        </div>
       </div>
 
       {/* Profile */}

@@ -157,6 +157,9 @@ export const translations = {
     outsideZones: "خارج مناطق الوقوف",
     locationOff: "الموقع غير مفعّل — نعرض مركز دمشق",
     locating: "جارٍ تحديد موقعك…",
+    back: "رجوع",
+    suggested: "مقترح",
+    gpsSuggestZone: "موقعك الحالي ضمن منطقة",
   },
 
   en: {
@@ -306,6 +309,9 @@ export const translations = {
     outsideZones: "Outside parking zones",
     locationOff: "Location off — showing Damascus center",
     locating: "Locating you…",
+    back: "Back",
+    suggested: "Suggested",
+    gpsSuggestZone: "You're currently inside",
   },
 } as const;
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { UserRole } from "@/types";
@@ -26,6 +27,23 @@ export async function signIn(formData: FormData) {
 
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // Sync the user's saved language into the SSR locale cookie so the next
+  // render is already in their preferred language.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("preferred_language")
+    .eq("id", data.user?.id ?? "")
+    .single();
+
+  const lang = profile?.preferred_language;
+  if (lang === "ar" || lang === "en") {
+    cookies().set("MAWQIF_LOCALE", lang, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
   }
 
   const role = (data.user?.app_metadata?.role ?? "driver") as UserRole;

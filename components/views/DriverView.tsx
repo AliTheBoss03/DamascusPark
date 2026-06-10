@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapPin, Play, Square, RefreshCw, Car, Wifi, Loader2 } from "lucide-react";
 import { WalletCard } from "@/components/ui/WalletCard";
 import { ZoneBadge } from "@/components/ui/ZoneBadge";
@@ -52,6 +52,15 @@ export function DriverView({
   const activeZone = activeSession?.zone ?? selectedZone;
   // Bill the active session against ITS snapshot, matching the server's charge.
   const activeGas = activeSession?.gas_price_snapshot ?? gasPriceSyp;
+
+  // Geofence suggestion: when GPS places the driver inside a zone, pre-select
+  // it. Keyed on the zone id (not the position) so it only fires on entering a
+  // new zone and never overrides a manual pick tick-by-tick. Skipped mid-session.
+  const detectedZoneId = live.currentZone?.id ?? null;
+  useEffect(() => {
+    if (!activeSession && live.currentZone) setSelectedZone(live.currentZone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detectedZoneId, activeSession]);
 
   const handleStartSession = async () => {
     if (!selectedZone || !licensePlate.trim() || busy) return;
@@ -224,7 +233,7 @@ export function DriverView({
                 <button
                   key={zone.id}
                   onClick={() => setSelectedZone(zone)}
-                  className={`p-3 rounded-xl border text-start transition-all duration-150
+                  className={`relative p-3 rounded-xl border text-start transition-all duration-150
                     ${selectedZone?.id === zone.id
                       ? zone.zone_color === "red" ? "border-red-500/60 bg-red-500/10"
                         : zone.zone_color === "yellow" ? "border-amber-500/60 bg-amber-500/10"
@@ -232,6 +241,11 @@ export function DriverView({
                       : "border-slate-700 bg-slate-800/40 hover:border-slate-600"
                     }`}
                 >
+                  {detectedZoneId === zone.id && (
+                    <span className="absolute top-1.5 end-1.5 text-[9px] font-bold text-amber-500 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 rounded-full px-1.5 py-0.5">
+                      {t("suggested")}
+                    </span>
+                  )}
                   <span className={`w-2.5 h-2.5 rounded-full block mb-2 ${getZoneDotColor(zone.zone_color)}`} />
                   <p className="text-xs font-semibold text-slate-200 leading-tight">{zone.name_ar}</p>
                   <p className="text-xs text-slate-500 mt-0.5">
@@ -257,8 +271,8 @@ export function DriverView({
                 t("locationOff")
               ) : live.currentZone ? (
                 <>
-                  {t("gpsDetected")}{" "}
-                  <span className="text-slate-300">{live.currentZone.name_ar}</span>
+                  {t("gpsSuggestZone")}{" "}
+                  <span className="text-amber-500 dark:text-amber-400 font-semibold">{live.currentZone.name_ar}</span>
                 </>
               ) : (
                 <>{t("gpsLive")} · {t("outsideZones")}</>

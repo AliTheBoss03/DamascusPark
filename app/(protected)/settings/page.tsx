@@ -19,12 +19,15 @@ export default async function SettingsPage() {
     .eq("id", user.id)
     .single();
 
+  const role = (user.app_metadata?.role ?? "driver") as string;
+
   return (
     <SettingsForm
       email={user.email ?? ""}
       initialName={profile?.name ?? ""}
       initialLanguage={(profile?.preferred_language ?? "ar") as Locale}
       initialVehicles={(profile?.saved_vehicles ?? []) as string[]}
+      backHref={`/${role}`}
     />
   );
 }
