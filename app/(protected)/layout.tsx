@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { UserNav } from "@/components/auth/UserNav";
 import { LanguageToggle } from "@/components/ui/LanguageToggle";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import type { UserRole } from "@/types";
 
 export default async function ProtectedLayout({
@@ -33,7 +36,7 @@ export default async function ProtectedLayout({
           {/* Logo */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div className="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
-              <span className="text-slate-900 font-bold text-sm leading-none">م</span>
+              <span className="text-neutral-900 font-bold text-sm leading-none">م</span>
             </div>
             <div className="hidden sm:block">
               <h1 className="text-base font-bold text-slate-100 leading-none">
@@ -46,7 +49,15 @@ export default async function ProtectedLayout({
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <LanguageToggle />
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              className="p-2 rounded-xl border border-slate-700 bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors shrink-0"
+            >
+              <Settings className="w-4 h-4" />
+            </Link>
             <UserNav
               name={name}
               email={user.email ?? ""}

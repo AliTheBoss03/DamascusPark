@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cairo } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { LanguageProvider } from "@/lib/i18n/context";
 import type { Locale } from "@/lib/i18n/translations";
 
@@ -29,11 +30,18 @@ export default function RootLayout({
   const dir = locale === "ar" ? "rtl" : "ltr";
 
   return (
-    <html lang={locale} dir={dir} className="dark">
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <body
         className={`${cairo.variable} min-h-screen bg-slate-950 text-slate-100 antialiased font-sans`}
       >
-        <LanguageProvider defaultLocale={locale}>{children}</LanguageProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <LanguageProvider defaultLocale={locale}>{children}</LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

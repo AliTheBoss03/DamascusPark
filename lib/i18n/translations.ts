@@ -132,6 +132,25 @@ export const translations = {
     unpaid: "غير مسدد",
     somethingWrong: "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
     refreshing: "جارٍ التحديث…",
+
+    // ── Settings ───────────────────────────────────────────────
+    settings: "الإعدادات",
+    settingsSubtitle: "إدارة ملفك الشخصي وتفضيلات التطبيق",
+    profileSection: "الملف الشخصي",
+    emailLabel: "البريد الإلكتروني",
+    displayName: "الاسم الظاهر",
+    appearance: "المظهر",
+    themeLabel: "السمة",
+    languageLabel: "اللغة",
+    arabic: "العربية",
+    english: "English",
+    savedVehiclesLabel: "المركبات المحفوظة",
+    addVehiclePlaceholder: "أضف لوحة سيارة",
+    addLabel: "إضافة",
+    noVehicles: "لا توجد مركبات محفوظة بعد",
+    saveChanges: "حفظ التغييرات",
+    savingLabel: "جارٍ الحفظ…",
+    savedLabel: "تم الحفظ",
   },
 
   en: {
@@ -256,6 +275,25 @@ export const translations = {
     unpaid: "unpaid",
     somethingWrong: "Something went wrong. Please try again.",
     refreshing: "Refreshing…",
+
+    // ── Settings ───────────────────────────────────────────────
+    settings: "Settings",
+    settingsSubtitle: "Manage your profile and app preferences",
+    profileSection: "Profile",
+    emailLabel: "Email",
+    displayName: "Display Name",
+    appearance: "Appearance",
+    themeLabel: "Theme",
+    languageLabel: "Language",
+    arabic: "Arabic",
+    english: "English",
+    savedVehiclesLabel: "Saved Vehicles",
+    addVehiclePlaceholder: "Add a license plate",
+    addLabel: "Add",
+    noVehicles: "No saved vehicles yet",
+    saveChanges: "Save Changes",
+    savingLabel: "Saving…",
+    savedLabel: "Saved",
   },
 } as const;
 

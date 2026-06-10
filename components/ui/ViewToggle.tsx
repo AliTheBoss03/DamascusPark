@@ -29,7 +29,7 @@ export function ViewToggle({ activeView, onChange }: ViewToggleProps) {
             transition-all duration-200 select-none
             ${
               activeView === role
-                ? "bg-amber-500 text-slate-900 shadow-md shadow-amber-500/20"
+                ? "bg-amber-500 text-neutral-900 shadow-md shadow-amber-500/20"
                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/60"
             }
           `}

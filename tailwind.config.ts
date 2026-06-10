@@ -1,6 +1,24 @@
 import type { Config } from "tailwindcss";
 
+// The neutral `slate` scale is redefined as CSS variables so the whole app
+// themes between light and dark automatically (see app/globals.css). Brand
+// colors (amber accent, zone red/yellow/green) are intentionally NOT themed.
+const slate = {
+  50: "hsl(var(--slate-50) / <alpha-value>)",
+  100: "hsl(var(--slate-100) / <alpha-value>)",
+  200: "hsl(var(--slate-200) / <alpha-value>)",
+  300: "hsl(var(--slate-300) / <alpha-value>)",
+  400: "hsl(var(--slate-400) / <alpha-value>)",
+  500: "hsl(var(--slate-500) / <alpha-value>)",
+  600: "hsl(var(--slate-600) / <alpha-value>)",
+  700: "hsl(var(--slate-700) / <alpha-value>)",
+  800: "hsl(var(--slate-800) / <alpha-value>)",
+  900: "hsl(var(--slate-900) / <alpha-value>)",
+  950: "hsl(var(--slate-950) / <alpha-value>)",
+};
+
 const config: Config = {
+  darkMode: "class",
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,6 +27,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        slate,
         zone: {
           red: "#ef4444",
           yellow: "#f59e0b",
@@ -22,7 +41,6 @@ const config: Config = {
         },
       },
       fontFamily: {
-        // Cairo covers Arabic + Latin in one typeface — ideal for bilingual government UI
         sans: ["var(--font-cairo)", "Cairo", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "Courier New", "monospace"],
       },

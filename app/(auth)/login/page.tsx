@@ -48,7 +48,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
             <div className="w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
-              <span className="text-slate-900 font-bold text-xl leading-none">م</span>
+              <span className="text-neutral-900 font-bold text-xl leading-none">م</span>
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-100 leading-none">Mawqif</h1>
@@ -111,7 +111,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center">
-              <span className="text-slate-900 font-bold text-base leading-none">م</span>
+              <span className="text-neutral-900 font-bold text-base leading-none">م</span>
             </div>
             <div>
               <h1 className="text-base font-bold text-slate-100 leading-none">Mawqif · موقف</h1>

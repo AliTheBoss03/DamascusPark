@@ -254,7 +254,7 @@ export function AdminView({ zones, sessions, fines, initialGasPrice, govPct }: A
           )}
 
           <button onClick={handleSaveGasPrice} disabled={saving} className="btn-primary w-full flex items-center justify-center gap-2">
-            {saving ? <span className="w-4 h-4 border-2 border-slate-900/40 border-t-slate-900 rounded-full animate-spin" />
+            {saving ? <span className="w-4 h-4 border-2 border-neutral-900/40 border-t-neutral-900 rounded-full animate-spin" />
               : saveStatus === "saved" ? <CheckCircle2 className="w-4 h-4" />
               : saveStatus === "error" ? <AlertCircle className="w-4 h-4" />
               : <Zap className="w-4 h-4" />

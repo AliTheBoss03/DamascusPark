@@ -108,7 +108,7 @@ export function LoginForm({ errorMessage }: { errorMessage?: string }) {
         <button type="submit" disabled={isPending || !email || !password} className="btn-primary w-full flex items-center justify-center gap-2 h-11">
           {isPending ? (
             <>
-              <span className="w-4 h-4 border-2 border-slate-900/40 border-t-slate-900 rounded-full animate-spin" />
+              <span className="w-4 h-4 border-2 border-neutral-900/40 border-t-neutral-900 rounded-full animate-spin" />
               {t("authenticating")}
             </>
           ) : (
