@@ -151,6 +151,12 @@ export const translations = {
     saveChanges: "حفظ التغييرات",
     savingLabel: "جارٍ الحفظ…",
     savedLabel: "تم الحفظ",
+
+    // ── Live location ──────────────────────────────────────────
+    gpsLive: "تحديد الموقع المباشر",
+    outsideZones: "خارج مناطق الوقوف",
+    locationOff: "الموقع غير مفعّل — نعرض مركز دمشق",
+    locating: "جارٍ تحديد موقعك…",
   },
 
   en: {
@@ -294,6 +300,12 @@ export const translations = {
     saveChanges: "Save Changes",
     savingLabel: "Saving…",
     savedLabel: "Saved",
+
+    // ── Live location ──────────────────────────────────────────
+    gpsLive: "Live location",
+    outsideZones: "Outside parking zones",
+    locationOff: "Location off — showing Damascus center",
+    locating: "Locating you…",
   },
 } as const;
 

@@ -8,6 +8,7 @@ import { SessionTimer } from "@/components/ui/SessionTimer";
 import { ScratchCardModal } from "@/components/ui/ScratchCardModal";
 import { DamascusMap } from "@/components/DamascusMap";
 import { calcHourlyRate, calcSessionCost, formatCredits, getZoneDotColor } from "@/lib/pricing";
+import { useLiveLocation } from "@/lib/hooks/useLiveLocation";
 import { useI18n } from "@/lib/i18n/context";
 import type { ParkingSession, ParkingZone } from "@/types";
 
@@ -29,6 +30,7 @@ export function DriverView({
   gasPriceSyp,
 }: DriverViewProps) {
   const { t } = useI18n();
+  const live = useLiveLocation(zones);
   const [balance, setBalance] = useState(initialBalance);
   const [activeSession, setActiveSession] = useState<ParkingSession | null>(initialActiveSession);
   const [selectedZone, setSelectedZone] = useState<ParkingZone | null>(
@@ -128,7 +130,6 @@ export function DriverView({
 
   const currentCost =
     activeSession && activeZone ? calcSessionCost(activeZone, activeGas, activeSession.started_at) : 0;
-  const hourlyRate = selectedZone ? calcHourlyRate(selectedZone, gasPriceSyp) : 0;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -241,17 +242,29 @@ export function DriverView({
             </div>
           </div>
 
-          {selectedZone && (
-            <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50 rounded-xl p-3">
-              <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>
-                {t("gpsDetected")}{" "}
-                <span className="text-slate-300">{selectedZone.name_ar}</span>
-                {" · "}
-                <span className="text-amber-400">{formatCredits(hourlyRate)} {t("credits")}/{t("credits_abbr")}</span>
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-xs bg-slate-800/50 rounded-xl p-3">
+            <MapPin className={`w-3.5 h-3.5 shrink-0 ${
+              live.status === "granted"
+                ? "text-green-500 dark:text-green-400"
+                : live.status === "locating"
+                ? "text-amber-500 dark:text-amber-400 animate-pulse"
+                : "text-slate-500"
+            }`} />
+            <span className="text-slate-500">
+              {live.status === "locating" ? (
+                t("locating")
+              ) : live.isDefault ? (
+                t("locationOff")
+              ) : live.currentZone ? (
+                <>
+                  {t("gpsDetected")}{" "}
+                  <span className="text-slate-300">{live.currentZone.name_ar}</span>
+                </>
+              ) : (
+                <>{t("gpsLive")} · {t("outsideZones")}</>
+              )}
+            </span>
+          </div>
 
           <button onClick={handleStartSession} disabled={!licensePlate.trim() || !selectedZone || busy} className="btn-primary w-full flex items-center justify-center gap-2">
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
